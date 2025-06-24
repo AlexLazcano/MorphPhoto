@@ -1,3 +1,6 @@
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+
 namespace MorphPhoto.MorphPhoto;
 
 public class ImageMetadata
@@ -8,4 +11,7 @@ public class ImageMetadata
     public DateTime? EarliestDate { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
+
+    public CorruptChecker.ImageCorruptness Corruptness;
+
 }

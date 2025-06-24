@@ -18,11 +18,16 @@ try
     }
     else
     {
-        Console.Write("Enter source directory: ");
-        sourceDir = Console.ReadLine()?.Trim('"');
+        // Console.Write("Enter source directory: ");
+        // sourceDir = Console.ReadLine()?.Trim('"');
+        //
+        // sourceDir = @"X:\.backup\Test";
+        sourceDir = @"X:\.backup\June 17 2025";
 
-        Console.Write("Enter destination directory: ");
-        destDir = Console.ReadLine()?.Trim('"');
+
+        // Console.Write("Enter destination directory: ");
+        // destDir = Console.ReadLine()?.Trim('"');'
+        destDir = @"X:\.backup\out3";
     }
 
     if (string.IsNullOrWhiteSpace(sourceDir) || string.IsNullOrWhiteSpace(destDir))
@@ -41,7 +46,6 @@ try
     var organizer = new Organizer(sourceDir, destDir);
     organizer.Organize();
     Console.Write("Done");
-    
 }
 catch (Exception ex)
 {

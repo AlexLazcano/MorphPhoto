@@ -1,7 +1,11 @@
 using System.Security.Cryptography;
 using System.Drawing;
 using System.Drawing.Imaging;
+using HeyRed.ImageSharp.Heif.Formats.Avif;
+using HeyRed.ImageSharp.Heif.Formats.Heif;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace MorphPhoto.MorphPhoto;
 
@@ -16,7 +20,12 @@ public class Organizer(string sourceDir, string destDir)
         // ".jpg",
         // ".jpeg",
         // ".png"
-        
+        ".heic"
+    };
+
+    private static DecoderOptions DecoderHeifOptions = new DecoderOptions()
+    {
+        Configuration = new Configuration(new HeifConfigurationModule(), new AvifConfigurationModule())
     };
 
     public void Organize()
@@ -82,7 +91,6 @@ public class Organizer(string sourceDir, string destDir)
         // Get image metadata
         var imageInfo = GetImageInfo(filePath);
 
-        // Determine destination path based on date taken or created
         var destPath = GetDestPath(filePath, imageInfo);
 
         // Ensure destination directory exists
@@ -106,18 +114,44 @@ public class Organizer(string sourceDir, string destDir)
     private string GetDestPath(string originalFilePath, ImageMetadata imageMetadata)
     {
         var fileName = Path.GetFileName(originalFilePath);
-        if (imageMetadata.EarliestDate.HasValue)
+        switch (imageMetadata.Corruptness)
         {
-            var yearFolder = imageMetadata.EarliestDate.Value.Year.ToString();
+            case CorruptChecker.ImageCorruptness.Partial:
+            {
+                var destPath = Path.Combine(_destDir, "PartialCorrupt", fileName);
 
-            var monthFolder = imageMetadata.EarliestDate.Value.ToString("MM-MMM");
-            var destPath = Path.Combine(_destDir, yearFolder, monthFolder, fileName);
+                return GetUniqueFileName(destPath);
+            }
+            case CorruptChecker.ImageCorruptness.Truncated:
+            {
+                var destPath = Path.Combine(_destDir, "Truncated", fileName);
 
-            return GetUniqueFileName(destPath);
+                return GetUniqueFileName(destPath);
+            }
+            case CorruptChecker.ImageCorruptness.Invalid:
+            {
+                var destPath = Path.Combine(_destDir, "InvalidDecoder", fileName);
+
+                return GetUniqueFileName(destPath);
+            }
+            case CorruptChecker.ImageCorruptness.None:
+            {
+                if (imageMetadata.EarliestDate.HasValue)
+                {
+                    var yearFolder = imageMetadata.EarliestDate.Value.Year.ToString();
+
+                    var monthFolder = imageMetadata.EarliestDate.Value.ToString("MM-MMM");
+                    var destPath = Path.Combine(_destDir, yearFolder, monthFolder, fileName);
+
+                    return GetUniqueFileName(destPath);
+                }
+
+                var error = Path.Combine(_destDir, "error", fileName);
+                return GetUniqueFileName(error);
+            }
+            default:
+                throw new ArgumentOutOfRangeException();
         }
-
-        var error = Path.Combine(_destDir, "error", fileName);
-        return GetUniqueFileName(error);
     }
 
     private string GetUniqueFileName(string filePath)
@@ -138,6 +172,7 @@ public class Organizer(string sourceDir, string destDir)
         return newPath;
     }
 
+
     private ImageMetadata GetImageInfo(string filePath)
     {
         var creationTime = File.GetCreationTime(filePath);
@@ -153,13 +188,33 @@ public class Organizer(string sourceDir, string destDir)
 
         try
         {
-            using var image = Image.Load(filePath);
-            info.Width = image.Width;
-            info.Height = image.Height;
+            bool isHeic = filePath.ToLower().EndsWith(".heic") || filePath.ToLower().EndsWith(".heif");
+
+            var image = filePath switch
+            {
+                _ when isHeic => Image.Load(DecoderHeifOptions, filePath),
+                _ => Image.Load(filePath)
+            };
+
+            using (image)
+            {
+                info.Width = image.Width;
+                info.Height = image.Height;
+                var rgba32 = image.CloneAs<Rgba32>();
+                info.Corruptness = CorruptChecker.CheckForPartialCorruption(rgba32);
+            }
         }
-        catch
+        catch (Exception heicEx) when (heicEx.Message.Contains("Unexpected end of file") ||
+                                       heicEx.Message.Contains("iloc box") ||
+                                       heicEx.Message.Contains("file bounds"))
+        {
+            info.Corruptness = CorruptChecker.ImageCorruptness.Truncated;
+        }
+        catch (Exception ex)
         {
             // If we can't read the image, use file dates
+            Console.WriteLine($"Error creating image info : {filePath} -> {ex.Message}");
+            info.Corruptness = CorruptChecker.ImageCorruptness.Invalid;
         }
 
         return info;
