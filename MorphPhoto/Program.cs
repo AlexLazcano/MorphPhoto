@@ -22,12 +22,13 @@ try
         // sourceDir = Console.ReadLine()?.Trim('"');
         //
         // sourceDir = @"X:\.backup\Test";
-        sourceDir = @"X:\.backup\June 17 2025";
+        sourceDir = @"X:\.backup\June 14 2024";
 
-
+        
+        var folderName = Path.GetFileName(sourceDir);
         // Console.Write("Enter destination directory: ");
         // destDir = Console.ReadLine()?.Trim('"');'
-        destDir = @"X:\.backup\out3";
+        destDir = @$"X:\.backup\organized\{folderName}";
     }
 
     if (string.IsNullOrWhiteSpace(sourceDir) || string.IsNullOrWhiteSpace(destDir))
@@ -42,8 +43,13 @@ try
         return;
     }
 
+
     // Create organizer and run
-    var organizer = new Organizer(sourceDir, destDir);
+    var organizer = new Organizer(sourceDir, destDir, new Organizer.OrganizerOptions()
+    {
+        OrganizationType = Organizer.OrganizationType.ByExtension,
+        SkipCorruptedFiles = false
+    });
     organizer.Organize();
     Console.Write("Done");
 }

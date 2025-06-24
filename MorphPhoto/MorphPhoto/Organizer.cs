@@ -1,45 +1,47 @@
-using System.Security.Cryptography;
-using System.Drawing;
-using System.Drawing.Imaging;
-using HeyRed.ImageSharp.Heif.Formats.Avif;
-using HeyRed.ImageSharp.Heif.Formats.Heif;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.PixelFormats;
 
 namespace MorphPhoto.MorphPhoto;
 
-public class Organizer(string sourceDir, string destDir)
+public partial class Organizer(string sourceDir, string destDir, Organizer.OrganizerOptions organizerOptions)
 {
-    private readonly string _sourceDir = sourceDir;
-    private readonly string _destDir = destDir;
     private readonly Dictionary<string, string> _duplicates = new();
 
     private readonly HashSet<string> _fileExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        // ".jpg",
-        // ".jpeg",
-        // ".png"
+        ".jpg",
+        ".jpeg",
+        ".png",
         ".heic"
     };
 
-    private static DecoderOptions DecoderHeifOptions = new DecoderOptions()
+    public enum OrganizationType
     {
-        Configuration = new Configuration(new HeifConfigurationModule(), new AvifConfigurationModule())
-    };
+        ByDate,
+        ByExtension
+    }
+
+    public class OrganizerOptions
+    {
+        public OrganizationType OrganizationType = OrganizationType.ByDate;
+
+        public bool SkipCorruptedFiles = true;
+        // public bool SkipExistingFiles { get; set; } = false;
+    }
+
 
     public void Organize()
     {
         try
         {
             WriteToConsole("Starting organize...");
-            WriteToConsole($"Source Dir {_sourceDir}");
-            WriteToConsole($"Destination Dir {_destDir}");
+            WriteToConsole($"Source Dir {sourceDir}");
+            WriteToConsole($"Destination Dir {destDir}");
 
-            Directory.CreateDirectory(_destDir);
+            Directory.CreateDirectory(destDir);
 
 
-            var images = GetImageFiles(_sourceDir);
+            var images = GetImageFiles(sourceDir);
 
             WriteToConsole($"Image count: {images.Count}");
 
@@ -58,13 +60,6 @@ public class Organizer(string sourceDir, string destDir)
         }
     }
 
-    private static void WriteToConsole(string message, ConsoleColor color = ConsoleColor.White)
-    {
-        var originalColor = Console.ForegroundColor;
-        Console.ForegroundColor = color;
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {message}");
-        Console.ForegroundColor = originalColor;
-    }
 
     private List<string> GetImageFiles(string directory)
     {
@@ -74,6 +69,7 @@ public class Organizer(string sourceDir, string destDir)
         {
             var allFiles = Directory.GetFiles(directory, "*", SearchOption.AllDirectories)
                 .Where(file => _fileExtensions.Contains(Path.GetExtension(file)))
+                .Where(file => !SkipPrefixes.Any(prefix => Path.GetFileName(file).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
 
             files.AddRange(allFiles);
@@ -91,6 +87,11 @@ public class Organizer(string sourceDir, string destDir)
         // Get image metadata
         var imageInfo = GetImageInfo(filePath);
 
+        if (organizerOptions.SkipCorruptedFiles && imageInfo.Corruptness != CorruptChecker.ImageCorruptness.None)
+        {
+            return;
+        }
+
         var destPath = GetDestPath(filePath, imageInfo);
 
         // Ensure destination directory exists
@@ -100,76 +101,8 @@ public class Organizer(string sourceDir, string destDir)
         File.Copy(filePath, destPath, false);
 
         // Ensure destination directory exists
-        WriteToConsole($"Organized: {Path.GetFileName(filePath)} -> {GetRelativePath(_destDir, destPath)}",
+        WriteToConsole($"Organized: {Path.GetFileName(filePath)} -> {GetRelativePath(destDir, destPath)}",
             ConsoleColor.Green);
-    }
-
-    private string GetRelativePath(string basePath, string fullPath)
-    {
-        var baseUri = new Uri(basePath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar);
-        var fullUri = new Uri(fullPath);
-        return baseUri.MakeRelativeUri(fullUri).ToString().Replace('/', Path.DirectorySeparatorChar);
-    }
-
-    private string GetDestPath(string originalFilePath, ImageMetadata imageMetadata)
-    {
-        var fileName = Path.GetFileName(originalFilePath);
-        switch (imageMetadata.Corruptness)
-        {
-            case CorruptChecker.ImageCorruptness.Partial:
-            {
-                var destPath = Path.Combine(_destDir, "PartialCorrupt", fileName);
-
-                return GetUniqueFileName(destPath);
-            }
-            case CorruptChecker.ImageCorruptness.Truncated:
-            {
-                var destPath = Path.Combine(_destDir, "Truncated", fileName);
-
-                return GetUniqueFileName(destPath);
-            }
-            case CorruptChecker.ImageCorruptness.Invalid:
-            {
-                var destPath = Path.Combine(_destDir, "InvalidDecoder", fileName);
-
-                return GetUniqueFileName(destPath);
-            }
-            case CorruptChecker.ImageCorruptness.None:
-            {
-                if (imageMetadata.EarliestDate.HasValue)
-                {
-                    var yearFolder = imageMetadata.EarliestDate.Value.Year.ToString();
-
-                    var monthFolder = imageMetadata.EarliestDate.Value.ToString("MM-MMM");
-                    var destPath = Path.Combine(_destDir, yearFolder, monthFolder, fileName);
-
-                    return GetUniqueFileName(destPath);
-                }
-
-                var error = Path.Combine(_destDir, "error", fileName);
-                return GetUniqueFileName(error);
-            }
-            default:
-                throw new ArgumentOutOfRangeException();
-        }
-    }
-
-    private string GetUniqueFileName(string filePath)
-    {
-        var directory = Path.GetDirectoryName(filePath);
-        var fileName = Path.GetFileNameWithoutExtension(filePath);
-        var extension = Path.GetExtension(filePath);
-
-        var counter = 1;
-        var newPath = filePath;
-
-        while (File.Exists(newPath))
-        {
-            newPath = Path.Combine(directory, $"{fileName}_{counter:D3}{extension}");
-            counter++;
-        }
-
-        return newPath;
     }
 
 
@@ -218,14 +151,5 @@ public class Organizer(string sourceDir, string destDir)
         }
 
         return info;
-    }
-
-
-    private string CalculateFileHash(string filePath)
-    {
-        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        using var sha256 = SHA256.Create();
-        var hashBytes = sha256.ComputeHash(stream);
-        return Convert.ToBase64String(hashBytes);
     }
 }
