@@ -21,11 +21,19 @@ public partial class Organizer(string sourceDir, string destDir, Organizer.Organ
         ByExtension
     }
 
+    public enum EHandleCorruptFiles
+    {
+        Skip,
+        NormalOrganize,
+        ExtensionOrganize,
+    }
+
     public class OrganizerOptions
     {
         public OrganizationType OrganizationType = OrganizationType.ByDate;
 
-        public bool SkipCorruptedFiles = true;
+        public EHandleCorruptFiles HandleCorruptFiles = EHandleCorruptFiles.NormalOrganize;
+
         // public bool SkipExistingFiles { get; set; } = false;
     }
 
@@ -69,7 +77,8 @@ public partial class Organizer(string sourceDir, string destDir, Organizer.Organ
         {
             var allFiles = Directory.GetFiles(directory, "*", SearchOption.AllDirectories)
                 .Where(file => _fileExtensions.Contains(Path.GetExtension(file)))
-                .Where(file => !SkipPrefixes.Any(prefix => Path.GetFileName(file).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                .Where(file => !SkipPrefixes.Any(prefix =>
+                    Path.GetFileName(file).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
 
             files.AddRange(allFiles);
@@ -87,7 +96,8 @@ public partial class Organizer(string sourceDir, string destDir, Organizer.Organ
         // Get image metadata
         var imageInfo = GetImageInfo(filePath);
 
-        if (organizerOptions.SkipCorruptedFiles && imageInfo.Corruptness != CorruptChecker.ImageCorruptness.None)
+        if (organizerOptions.HandleCorruptFiles == EHandleCorruptFiles.Skip &&
+            imageInfo.Corruptness != CorruptChecker.ImageCorruptness.None)
         {
             return;
         }

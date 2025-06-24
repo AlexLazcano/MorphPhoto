@@ -22,7 +22,7 @@ try
         // sourceDir = Console.ReadLine()?.Trim('"');
         //
         // sourceDir = @"X:\.backup\Test";
-        sourceDir = @"X:\.backup\June 14 2024";
+        sourceDir = @"X:\.backup\May 2022";
 
         
         var folderName = Path.GetFileName(sourceDir);
@@ -47,8 +47,8 @@ try
     // Create organizer and run
     var organizer = new Organizer(sourceDir, destDir, new Organizer.OrganizerOptions()
     {
-        OrganizationType = Organizer.OrganizationType.ByExtension,
-        SkipCorruptedFiles = false
+        OrganizationType = Organizer.OrganizationType.ByDate,
+        HandleCorruptFiles = Organizer.EHandleCorruptFiles.NormalOrganize
     });
     organizer.Organize();
     Console.Write("Done");
